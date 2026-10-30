@@ -1,0 +1,13 @@
+services:
+  tour-app:
+    build: .
+    container_name: ai-tour-app
+    # Пробрасываем порт 8000 наружу (чтобы открывать в браузере Windows)
+    ports:
+      - "8000:8000"
+    volumes:
+      # Монтируем нашу папку с проектом внутрь контейнера (двусторонняя связь)
+      - .:/app
+    # Указываем, откуда запускать сервер (из папки с готовым туром)
+    command: python3 core/server.py
+    restart: unless-stopped

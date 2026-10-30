@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D тур</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.7/build/pannellum.css">
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.7/build/pannellum.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #111; font-family: 'Montserrat', sans-serif; }
+        #panorama { width: 100%; height: 100%; }
+        .pnlm-title-box, .pnlm-author-box, .pnlm-controls-container { display: none !important; }
+
+        .pnlm-sprite.pnlm-scene {
+            background-image: none !important; background-color: rgba(0, 0, 0, 0.45) !important;
+            border: 2px solid #fff !important; border-radius: 50% !important;
+            width: 44px !important; height: 44px !important; margin-top: -22px !important; margin-left: -22px !important;
+            box-sizing: border-box; transition: transform 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: flex; justify-content: center; align-items: center;
+        }
+        .pnlm-sprite.pnlm-scene:hover { transform: scale(1.1); background-color: rgba(0,0,0,0.8) !important; }
+        .pnlm-sprite.pnlm-scene::after { content: ''; width: 12px; height: 12px; border-top: 3px solid #fff; border-right: 3px solid #fff; transform: rotate(-45deg); margin-top: 6px; border-radius: 1px; }
+
+        #sidebar {
+            position: absolute; top: 0; left: 0; width: max-content; min-width: 120px; height: 100vh;
+            background: transparent; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            display: flex; flex-direction: column; z-index: 1000;
+            border-right: 1px solid rgba(255,255,255,0.05); transition: transform 0.4s;
+        }
+        #sidebar.hidden { transform: translateX(-100%); }
+        .logo-container { padding: 20px 10px; display: flex; justify-content: center; }
+        .logo-container img { width: 75px; height: auto; max-height: 75px; object-fit: contain; }
+        #room-list { padding: 5px 0 20px 0; margin: 0; overflow-y: auto; flex-grow: 1; }
+        #room-list::-webkit-scrollbar { width: 0px; }
+        .menu-section-title { padding: 15px 15px 5px 15px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255, 255, 255, 0.6); font-weight: 600; }
+        .room-item { padding: 10px 15px; color: rgba(255, 255, 255, 0.85); font-size: 13px; cursor: pointer; transition: 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .room-item:hover { color: #fff; background: rgba(255,255,255,0.1); }
+        .room-item.active { color: #fff; font-weight: 500; background: rgba(156, 136, 111, 0.9); }
+        
+        .bottom-controls { padding: 15px; display: flex; justify-content: flex-start; gap: 8px; border-top: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); }
+        .ctrl-btn { width: 34px; height: 34px; border-radius: 50%; background: #fff; color: #000; display: flex; justify-content: center; align-items: center; cursor: pointer; border: none; font-size: 16px; font-weight: bold; transition: transform 0.2s; }
+        .ctrl-btn:hover { transform: scale(1.05); }
+        .grid-icon { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px; width: 14px; height: 14px; }
+        .grid-icon span { background: #000; border-radius: 1px; }
+
+        .custom-controls { position: absolute; top: 20px; right: 20px; display: flex; flex-direction: column; gap: 12px; z-index: 1000; }
+        .zoom-group { display: flex; flex-direction: column; background: rgba(255, 255, 255, 0.9); border-radius: 20px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.15); margin-bottom: 3px; }
+        .zoom-btn { width: 40px; height: 40px; background: transparent; border: none; font-size: 24px; color: #333; cursor: pointer; display: flex; justify-content: center; align-items: center; transition: background 0.2s; }
+        .zoom-btn:hover { background: rgba(0, 0, 0, 0.05); }
+        .zoom-btn:first-child { border-bottom: 1px solid rgba(0,0,0,0.1); }
+        .circle-btn { width: 40px; height: 40px; background: rgba(255, 255, 255, 0.9); border-radius: 50%; border: none; cursor: pointer; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); transition: transform 0.2s; }
+        .circle-btn:hover { transform: scale(1.05); background: #fff; }
+        .circle-btn svg { width: 20px; height: 20px; fill: #333; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(5px); z-index: 2000; display: none; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: #1a1a1a; border: 1px solid #333; border-radius: 12px; width: 95vw; max-width: 1600px; max-height: 95vh; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); position: relative; overflow-y: auto; color: #fff; box-sizing: border-box; }
+        .modal-content::-webkit-scrollbar { width: 6px; }
+        .modal-content::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+        .modal-content h2 { margin-top: 0; color: #fff; font-weight: 500; }
+        .close-modal { position: absolute; top: 15px; right: 20px; background: none; border: none; color: #888; font-size: 28px; cursor: pointer; transition: color 0.2s; z-index: 10; }
+        .close-modal:hover { color: #fff; }
+
+        .scene-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; margin-top: 20px; }
+        .scene-card { background: #2a2a2a; border-radius: 8px; overflow: hidden; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; border: 1px solid #333; }
+        .scene-card:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.5); border-color: #555; }
+        .scene-card img { width: 100%; height: 90px; object-fit: cover; display: block; }
+        .scene-card-title { padding: 8px; font-size: 13px; text-align: center; font-weight: 500; }
+
+        .modal-fullscreen {
+            width: 100vw; height: 100vh; max-width: 100vw; max-height: 100vh;
+            border-radius: 0; padding: 20px; margin: 0; display: flex; flex-direction: column; background: #111; overflow: hidden;
+        }
+        .modal-fullscreen .close-modal { top: 10px; right: 20px; font-size: 40px; color: #fff; z-index: 10000; text-shadow: 0 0 10px rgba(0,0,0,0.8); }
+        
+        .map-header { 
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 0 40px 15px 40px; flex-shrink: 0; gap: 15px; 
+        }
+        .map-header h2 { margin: 0; text-align: left; font-size: 22px; white-space: nowrap; color: #fff; font-weight: 500; }
+        .map-tabs { display: flex; justify-content: center; gap: 10px; margin: 0; flex: 1; }
+        .map-zoom-controls { display: flex; gap: 5px; margin: 0; }
+        .map-zoom-controls button { 
+            padding: 6px 15px; font-size: 14px; cursor: pointer; background: #007bff; 
+            color: white; border: none; border-radius: 5px; font-weight: bold; transition: background 0.2s; 
+        }
+        .map-zoom-controls button:hover { background: #0056b3; }
+        
+        .tab-btn { padding: 8px 20px; cursor: pointer; background: #333; border: 1px solid #555; color: white; border-radius: 5px; font-weight: bold; font-size: 14px; transition: 0.2s; }
+        .tab-btn.active { background: #007bff; border-color: #007bff; }
+        
+        /* ИНТЕРАКТИВНАЯ ПЛАНИРОВКА */
+        #map-scroll-container { 
+            flex: 1; overflow: hidden; background: #ffffff; border-radius: 8px; 
+            position: relative; cursor: grab; touch-action: none; user-select: none; 
+        }
+        #map-scroll-container:active { cursor: grabbing; }
+        
+        #map-view-container { 
+            position: absolute; top: 0; left: 0; transform-origin: 0 0; 
+        }
+        
+        #map-rotate-wrapper {
+            position: relative;
+            transform-origin: center center;
+            display: inline-block;
+        }
+        
+        #main-map-img { display: block; pointer-events: none; }
+        
+        .map-tab-dot { 
+            position: absolute; width: 24px; height: 24px; background: rgba(0, 123, 255, 0.9); 
+            border: 2px solid #fff; border-radius: 50%; cursor: pointer; 
+            transform: translate(-50%, -50%); box-shadow: 0 4px 10px rgba(0,0,0,0.3); 
+            transition: transform 0.2s; display: flex; justify-content: center; align-items: center; 
+            color: white; font-size: 11px; font-weight: bold; 
+        }
+        .map-tab-dot:hover { transform: translate(-50%, -50%) scale(1.2); background: #0056b3; }
+
+        /* МОБИЛЬНАЯ ВЕРСИЯ */
+        @media (max-width: 768px) {
+            .hide-mobile { display: none !important; }
+            .map-header { flex-direction: column; justify-content: center; padding: 0 40px 10px 40px; gap: 10px; }
+            .map-header h2 { font-size: 18px; text-align: center; margin-top: 5px; }
+            .modal-fullscreen .close-modal { top: 5px; right: 15px; font-size: 32px; }
+            
+            /* Немного увеличим кнопку поворота на мобильных для удобства */
+            .map-zoom-controls button[onclick="rotateMap()"] { padding: 8px 20px; font-size: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="panorama"></div>
+
+    <div id="sidebar">
+        <div class="logo-container">
+            <img id="site-logo" alt="Logo" style="display:none;">
+        </div>
+        <div id="room-list"></div>
+        <div class="bottom-controls">
+            <button class="ctrl-btn" onclick="openModal('modal-info')" title="Информация">i</button>
+            <button class="ctrl-btn" onclick="openModal('modal-scenes')" title="Все сцены">
+                <div class="grid-icon"><span></span><span></span><span></span><span></span></div>
+            </button>
+            <button class="ctrl-btn" onclick="openModal('modal-map')" title="Планировка">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="custom-controls">
+        <div class="zoom-group">
+            <button class="zoom-btn" id="btn-zoom-in">+</button>
+            <button class="zoom-btn" id="btn-zoom-out">−</button>
+        </div>
+        <button class="circle-btn" id="btn-fullscreen" title="На весь экран">
+            <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+        </button>
+        <button class="circle-btn" id="btn-toggle-menu" title="Скрыть/Показать меню">
+            <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+        </button>
+    </div>
+
+    <div class="modal-overlay" id="modal-info">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal()">&times;</button>
+            <div id="project-info-content">
+                <p style="color:#aaa;">Загрузка...</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-scenes">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal()">&times;</button>
+            <h2>Выберите комнату</h2>
+            <div class="scene-grid" id="scene-grid-container"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-map">
+        <div class="modal-content modal-fullscreen">
+            <button class="close-modal" onclick="closeModal()">&times;</button>
+            
+            <div class="map-header">
+                <h2>Планировка</h2>
+                <div class="map-tabs" id="map-tabs-container"></div>
+                <div class="map-zoom-controls">
+                    <button onclick="rotateMap()" title="Повернуть на 90°">↻</button>
+                    <button class="hide-mobile" onclick="zoomMap(1.25)">+</button>
+                    <button class="hide-mobile" onclick="zoomMap(0.8)">-</button>
+                    <button class="hide-mobile" onclick="resetMapZoom()">Сброс</button>
+                </div>
+            </div>
+
+            <div id="map-scroll-container">
+                <div id="map-view-container">
+                    <div id="map-rotate-wrapper">
+                        <img id="main-map-img" src="" alt="Планировка" onload="resetMapView()">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let viewer, mapPoints = {}, currentMapFloor = 1, sceneTitles = {}, floorConfig = [];
+        
+        let mapScale = 1, mapTranslateX = 0, mapTranslateY = 0;
+        let minMapScale = 1;
+        let currentRotation = 0;
+        let isDraggingMap = false, mapStartX = 0, mapStartY = 0;
+        let touchStartDist = 0, touchStartScale = 1, touchCenterX = 0, touchCenterY = 0;
+
+        fetch(`tour.json?t=${Date.now()}`)
+            .then(response => response.json())
+            .then(config => {
+                const transitionMode = (config.default && config.default.transition) || 'smart_fade';
+                const isSmart = transitionMode !== 'fade';
+
+                if (isSmart) {
+                    Object.keys(config.scenes).forEach(sceneId => {
+                        const scene = config.scenes[sceneId];
+                        if (!scene.hotSpots) return;
+
+                        scene.hotSpots.forEach(h => {
+                            if (!h.sceneId) return;
+                            if (h.targetYaw !== undefined) return;
+
+                            const target = config.scenes[h.sceneId];
+                            if (!target || !target.hotSpots) return;
+
+                            const backDoor = target.hotSpots.find(
+                                b => b.sceneId === sceneId && typeof b.yaw === 'number'
+                            );
+                            if (!backDoor) return;
+
+                            let yaw = backDoor.yaw + 180;
+                            yaw = ((yaw + 180) % 360 + 360) % 360 - 180;
+
+                            h.targetYaw   = yaw;
+                            h.targetPitch = 0;
+                        });
+                    });
+                }
+
+                viewer = pannellum.viewer('panorama', config);
+                
+                if (config.default && config.default.logo) {
+                    const logoEl = document.getElementById('site-logo');
+                    logoEl.src = config.default.logo;
+                    logoEl.style.display = '';
+                    logoEl.onerror = () => logoEl.style.display = 'none';
+                }
+
+                floorConfig = config.floors || [{id: 1, name: "1 этаж", plan: "plan1.png", rotation: 0}];
+
+                const floorsWithPlan = floorConfig.filter(f => f.plan && f.plan.trim() !== '');
+                const tabsContainer = document.getElementById('map-tabs-container');
+                if (floorsWithPlan.length <= 1) {
+                    tabsContainer.style.display = 'none';
+                } else {
+                    floorsWithPlan.forEach(f => {
+                        tabsContainer.innerHTML += `<button class="tab-btn ${f.id === floorsWithPlan[0].id ? 'active' : ''}" id="m-tab-${f.id}" onclick="switchMapFloor(${f.id})">${f.name}</button>`;
+                    });
+                }
+
+                const roomList = document.getElementById('room-list');
+                const sceneFloors = [...new Set(Object.values(config.scenes).map(s => s.floor || 1))].sort();
+
+                sceneFloors.forEach(floorId => {
+                    let floorName = `${floorId} этаж`;
+                    const fInfo = floorConfig.find(f => f.id == floorId);
+                    if (fInfo) floorName = fInfo.name;
+
+                    const titleEl = document.createElement('div');
+                    titleEl.className = 'menu-section-title';
+                    titleEl.innerText = floorName;
+                    roomList.appendChild(titleEl);
+
+                    Object.keys(config.scenes).sort().forEach(id => {
+                        const scene = config.scenes[id];
+                        if ((scene.floor || 1) == floorId) {
+                            sceneTitles[id] = scene.title;
+                            const div = document.createElement('div');
+                            div.className = 'room-item';
+                            div.dataset.scene = id;
+                            div.innerText = scene.title;
+                            div.addEventListener('click', () => viewer.loadScene(id));
+                            roomList.appendChild(div);
+                        }
+                    });
+                });
+
+                const gridContainer = document.getElementById('scene-grid-container');
+                Object.keys(config.scenes).sort().forEach(id => {
+                    const card = document.createElement('div');
+                    card.className = 'scene-card';
+                    const thumbSrc = `thumbnails/${id}.jpg`;
+                    const title = config.scenes[id].title;
+                    card.innerHTML = `<img src="${thumbSrc}" alt="${title}" onerror="this.src='multires/${id}/fallback/0/0_0_0.jpg'"><div class="scene-card-title">${title}</div>`;
+                    card.addEventListener('click', () => { viewer.loadScene(id); closeModal(); });
+                    gridContainer.appendChild(card);
+                });
+
+                viewer.on('scenechange', function(sceneId) {
+                    document.querySelectorAll('.room-item').forEach(el => el.classList.remove('active'));
+                    const activeItem = document.querySelector(`.room-item[data-scene="${sceneId}"]`);
+                    if (activeItem) activeItem.classList.add('active');
+                });
+
+                const firstScene = config.default.firstScene;
+                const firstItem = document.querySelector(`.room-item[data-scene="${firstScene}"]`);
+                if (firstItem) firstItem.classList.add('active');
+            })
+            .catch(err => console.error("Ошибка загрузки tour.json:", err));
+
+        fetch(`map_points.json?t=${Date.now()}`)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => { if(data) mapPoints = data; })
+            .catch(() => console.warn("⚠️ map_points.json не найден."));
+
+        function openModal(modalId) {
+            document.getElementById(modalId).classList.add('active');
+            
+            if (modalId === 'modal-info') {
+                const container = document.getElementById('project-info-content');
+                if (!container.dataset.loaded) {
+                    fetch(`info.html?t=${Date.now()}`)
+                        .then(res => res.ok ? res.arrayBuffer() : Promise.reject('Not found'))
+                        .then(buffer => {
+                            const html = new TextDecoder('utf-8').decode(buffer);
+                            container.innerHTML = html;
+                            container.dataset.loaded = 'true';
+                        })
+                        .catch(() => container.innerHTML = '<h2>О проекте</h2><p>Информация не найдена.</p>');
+                }
+            }
+            
+            if (modalId === 'modal-map') {
+                const floorsWithPlan = floorConfig.filter(f => f.plan && f.plan.trim() !== '');
+                if (floorsWithPlan.length > 0) {
+                    setTimeout(() => { switchMapFloor(floorsWithPlan[0].id); }, 50);
+                }
+            }
+        }
+
+        function closeModal() {
+            document.querySelectorAll('.modal-overlay').forEach(el => el.classList.remove('active'));
+        }
+
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+        });
+
+        function jumpToScene(sceneId) {
+            if (viewer) { viewer.loadScene(sceneId); closeModal(); }
+        }
+
+        function switchMapFloor(floorId) {
+            currentMapFloor = floorId;
+            floorConfig.forEach(f => {
+                const btn = document.getElementById(`m-tab-${f.id}`);
+                if (btn) btn.classList.toggle('active', f.id === floorId);
+            });
+            
+            const floorInfo = floorConfig.find(f => f.id === floorId);
+            
+            const savedRot = localStorage.getItem('mapRotation_' + floorId);
+            if (savedRot !== null) {
+                currentRotation = parseInt(savedRot);
+            } else if (floorInfo && floorInfo.rotation !== undefined) {
+                currentRotation = parseInt(floorInfo.rotation);
+            } else {
+                currentRotation = 0;
+            }
+
+            if (floorInfo && floorInfo.plan) {
+                const img = document.getElementById('main-map-img');
+                img.src = floorInfo.plan;
+                img.onerror = function() {
+                    if (this.src.endsWith('.png')) { this.src = this.src.replace('.png', '.jpg'); }
+                };
+            }
+            
+            document.querySelectorAll('.map-tab-dot').forEach(el => el.remove());
+            if (mapPoints[floorId] && mapPoints[floorId].length > 0) {
+                const container = document.getElementById('map-rotate-wrapper');
+                mapPoints[floorId].forEach((point, idx) => {
+                    const dot = document.createElement('div');
+                    dot.className = 'map-tab-dot';
+                    dot.style.left = point.x + '%';
+                    dot.style.top = point.y + '%';
+                    dot.innerText = idx + 1;
+                    dot.title = sceneTitles[point.sceneId] || point.sceneId;
+                    dot.addEventListener('click', (e) => { e.stopPropagation(); jumpToScene(point.sceneId); });
+                    container.appendChild(dot);
+                });
+            }
+        }
+
+        function rotateMap() {
+            currentRotation = (currentRotation + 90) % 360;
+            localStorage.setItem('mapRotation_' + currentMapFloor, currentRotation);
+            resetMapView();
+        }
+
+        function resetMapView() {
+            const container = document.getElementById('map-scroll-container');
+            const img = document.getElementById('main-map-img');
+            if (!container || !img) return;
+
+            let iw = img.naturalWidth;
+            let ih = img.naturalHeight;
+            
+            if (!iw || !ih) {
+                iw = img.width || 1000;
+                ih = img.height || 1000;
+            }
+
+            let displayW = iw;
+            let displayH = ih;
+            if (currentRotation % 180 !== 0) {
+                displayW = ih;
+                displayH = iw;
+            }
+
+            const cw = container.clientWidth;
+            const ch = container.clientHeight;
+
+            minMapScale = Math.min(cw / displayW, ch / displayH, 1);
+            mapScale = minMapScale;
+            
+            mapTranslateX = (cw - displayW * mapScale) / 2;
+            mapTranslateY = (ch - displayH * mapScale) / 2;
+
+            updateMapTransform();
+        }
+
+        function updateMapTransform() {
+            const view = document.getElementById('map-view-container');
+            const rotator = document.getElementById('map-rotate-wrapper');
+            if (view) {
+                view.style.transform = `translate(${mapTranslateX}px, ${mapTranslateY}px) scale(${mapScale})`;
+            }
+            if (rotator) {
+                rotator.style.transform = `rotate(${currentRotation}deg)`;
+            }
+        }
+
+        function resetMapZoom() { 
+            resetMapView(); 
+        }
+
+        function zoomMap(factor) {
+            const container = document.getElementById('map-scroll-container');
+            const cx = container.clientWidth / 2;
+            const cy = container.clientHeight / 2;
+            
+            const newScale = Math.max(minMapScale, Math.min(10, mapScale * factor));
+            mapTranslateX = cx - (cx - mapTranslateX) * (newScale / mapScale);
+            mapTranslateY = cy - (cy - mapTranslateY) * (newScale / mapScale);
+            mapScale = newScale;
+            
+            updateMapTransform();
+        }
+
+        const mapContainer = document.getElementById('map-scroll-container');
+
+        mapContainer.addEventListener('wheel', function(e) {
+            if (!document.getElementById('modal-map').classList.contains('active')) return;
+            e.preventDefault();
+            
+            const rect = mapContainer.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+            const newScale = Math.max(minMapScale, Math.min(10, mapScale * zoomFactor));
+            
+            mapTranslateX = mouseX - (mouseX - mapTranslateX) * (newScale / mapScale);
+            mapTranslateY = mouseY - (mouseY - mapTranslateY) * (newScale / mapScale);
+            mapScale = newScale;
+            
+            updateMapTransform();
+        }, { passive: false });
+
+        mapContainer.addEventListener('mousedown', (e) => {
+            if (e.button !== 0 || e.target.classList.contains('map-tab-dot')) return;
+            isDraggingMap = true;
+            mapStartX = e.clientX - mapTranslateX;
+            mapStartY = e.clientY - mapTranslateY;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDraggingMap) return;
+            mapTranslateX = e.clientX - mapStartX;
+            mapTranslateY = e.clientY - mapStartY;
+            updateMapTransform();
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDraggingMap = false;
+        });
+
+        mapContainer.addEventListener('touchstart', (e) => {
+            if (e.target.classList.contains('map-tab-dot')) return;
+            
+            if (e.touches.length === 1) {
+                isDraggingMap = true;
+                mapStartX = e.touches[0].clientX - mapTranslateX;
+                mapStartY = e.touches[0].clientY - mapTranslateY;
+            } else if (e.touches.length === 2) {
+                isDraggingMap = false;
+                const t1 = e.touches[0], t2 = e.touches[1];
+                touchStartDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+                touchStartScale = mapScale;
+                
+                const rect = mapContainer.getBoundingClientRect();
+                touchCenterX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                touchCenterY = (t1.clientY + t2.clientY) / 2 - rect.top;
+            }
+        }, { passive: false });
+
+        mapContainer.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 1 && isDraggingMap) {
+                e.preventDefault();
+                mapTranslateX = e.touches[0].clientX - mapStartX;
+                mapTranslateY = e.touches[0].clientY - mapStartY;
+                updateMapTransform();
+            } else if (e.touches.length === 2) {
+                e.preventDefault();
+                const t1 = e.touches[0], t2 = e.touches[1];
+                const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+                const newScale = Math.max(minMapScale, Math.min(10, touchStartScale * (dist / touchStartDist)));
+                
+                mapTranslateX = touchCenterX - (touchCenterX - mapTranslateX) * (newScale / mapScale);
+                mapTranslateY = touchCenterY - (touchCenterY - mapTranslateY) * (newScale / mapScale);
+                mapScale = newScale;
+                
+                updateMapTransform();
+            }
+        }, { passive: false });
+
+        mapContainer.addEventListener('touchend', () => {
+            isDraggingMap = false;
+        });
+
+        document.getElementById('btn-zoom-in').addEventListener('click', () => { if(viewer) viewer.setHfov(viewer.getHfov() - 10, 500); });
+        document.getElementById('btn-zoom-out').addEventListener('click', () => { if(viewer) viewer.setHfov(viewer.getHfov() + 10, 500); });
+        document.getElementById('btn-fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(e => console.log(e));
+            else document.exitFullscreen();
+        });
+        document.getElementById('btn-toggle-menu').addEventListener('click', () => { document.getElementById('sidebar').classList.toggle('hidden'); });
+    </script>
+</body>
+</html>

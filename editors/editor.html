@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D тур (Редактор)</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.7/build/pannellum.css">
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.7/build/pannellum.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #111; font-family: 'Montserrat', sans-serif; }
+        #panorama { width: 100%; height: 100%; }
+        .pnlm-title-box, .pnlm-author-box, .pnlm-controls-container { display: none !important; }
+
+        .crosshair { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; transform: translate(-50%, -50%); pointer-events: none; z-index: 99999; }
+        .crosshair::before, .crosshair::after { content: ''; position: absolute; background: rgba(255,50,50,1); box-shadow: 0 0 5px rgba(0,0,0,0.8); }
+        .crosshair::before { top: 9px; left: 0; width: 20px; height: 2px; }
+        .crosshair::after { top: 0; left: 9px; width: 2px; height: 20px; }
+
+        .pnlm-sprite.pnlm-scene {
+            background-image: none !important; background-color: #00E676 !important;
+            border: 3px solid #fff !important; border-radius: 50% !important;
+            width: 36px !important; height: 36px !important; margin-top: -18px !important; margin-left: -18px !important;
+            box-sizing: border-box; transition: transform 0.2s; box-shadow: 0 0 15px rgba(0, 230, 118, 0.8) !important; cursor: pointer;
+        }
+        .pnlm-sprite.pnlm-scene:hover { transform: scale(1.2); }
+        .pnlm-sprite.pnlm-scene::after { display: none; }
+
+        #sidebar { position: absolute; top: 0; left: 0; width: max-content; min-width: 120px; height: 100vh; background: transparent; backdrop-filter: blur(8px); display: flex; flex-direction: column; z-index: 1000; border-right: 1px solid rgba(255,255,255,0.05); }
+        #sidebar.hidden { transform: translateX(-100%); }
+        .logo-container { padding: 20px 10px; display: flex; justify-content: center; }
+        .logo-container img { width: 75px; height: auto; max-height: 75px; object-fit: contain; }
+        #room-list { padding: 5px 0 20px 0; margin: 0; overflow-y: auto; flex-grow: 1; }
+        #room-list::-webkit-scrollbar { width: 0px; }
+        .menu-section-title { padding: 15px 15px 5px 15px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255, 255, 255, 0.6); font-weight: 600; }
+        .room-item { padding: 10px 15px; color: rgba(255, 255, 255, 0.85); font-size: 13px; cursor: pointer; transition: 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .room-item:hover { color: #fff; background: rgba(255,255,255,0.1); }
+        .room-item.active { color: #fff; font-weight: 500; background: rgba(156, 136, 111, 0.9); }
+        .bottom-controls { padding: 15px; display: flex; justify-content: flex-start; gap: 8px; border-top: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); }
+        .ctrl-btn { width: 34px; height: 34px; border-radius: 50%; background: #fff; color: #000; display: flex; justify-content: center; align-items: center; cursor: pointer; border: none; font-size: 16px; font-weight: bold; }
+        .grid-icon { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px; width: 14px; height: 14px; }
+        .grid-icon span { background: #000; border-radius: 1px; }
+
+        #editor-panel { position: absolute; top: 20px; right: 20px; width: 320px; max-height: 90vh; background: rgba(20, 20, 20, 0.95); backdrop-filter: blur(10px); border: 1px solid #444; border-radius: 12px; padding: 20px; z-index: 1001; color: white; overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transition: transform 0.3s; }
+        #editor-panel.hidden { transform: translateX(120%); }
+        #editor-panel h2 { margin-top: 0; font-size: 18px; color: #4CAF50; }
+        .editor-section { background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        .editor-section h3 { margin-top: 0; font-size: 14px; color: #aaa; margin-bottom: 10px; }
+        select, input { width: 100%; padding: 10px; margin-bottom: 10px; background: #333; color: white; border: 1px solid #555; border-radius: 5px; font-size: 14px; box-sizing: border-box; }
+        #editor-panel button { width: 100%; padding: 10px; margin-bottom: 10px; cursor: pointer; border: none; border-radius: 5px; font-size: 14px; font-weight: bold; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-success { background: #4CAF50; color: white; }
+        .btn-danger { background: #f44336; color: white; }
+        .btn-warning { background: #ff9800; color: black; }
+        .btn-small { width: auto !important; padding: 4px 8px; margin: 0; font-size: 12px; }
+        .arrow-item { background: #333; padding: 10px; margin-bottom: 5px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+
+        #floating-toggle-btn { position: absolute; top: 20px; right: 20px; width: 50px; height: 50px; border-radius: 50%; background: rgba(20, 20, 20, 0.9); backdrop-filter: blur(10px); border: 1px solid #555; color: white; font-size: 24px; cursor: pointer; z-index: 1002; box-shadow: 0 4px 15px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); z-index: 2000; display: none; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: #1a1a1a; border: 1px solid #333; border-radius: 12px; width: 95vw; max-width: 1600px; max-height: 95vh; padding: 30px; position: relative; overflow-y: auto; color: #fff; box-sizing: border-box; }
+        .close-modal { position: absolute; top: 15px; right: 20px; background: none; border: none; color: #888; font-size: 28px; cursor: pointer; z-index: 10; }
+        .modal-content h2 { margin-top: 0; }
+        .scene-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; margin-top: 20px; }
+        .scene-card { background: #2a2a2a; border-radius: 8px; overflow: hidden; cursor: pointer; }
+        .scene-card img { width: 100%; height: 90px; object-fit: cover; display: block; }
+        .scene-card-title { padding: 8px; font-size: 13px; text-align: center; }
+
+        .modal-fullscreen { width: 100vw; height: 100vh; max-width: 100vw; max-height: 100vh; border-radius: 0; padding: 20px; margin: 0; display: flex; flex-direction: column; background: #111; overflow: hidden; }
+        .modal-fullscreen .close-modal { top: 10px; right: 20px; font-size: 40px; color: #fff; z-index: 10000; text-shadow: 0 0 10px rgba(0,0,0,0.8); }
+        
+        .map-header { display: flex; justify-content: space-between; align-items: center; padding: 0 40px 15px 40px; flex-shrink: 0; gap: 15px; }
+        .map-header h2 { margin: 0; text-align: left; font-size: 22px; white-space: nowrap; color: #fff; font-weight: 500; }
+        .map-tabs { display: flex; justify-content: center; gap: 10px; margin: 0; flex: 1; }
+        .tab-btn { padding: 8px 20px; cursor: pointer; background: #333; border: 1px solid #555; color: white; border-radius: 5px; font-weight: bold; font-size: 14px; transition: 0.2s; }
+        .tab-btn.active { background: #007bff; border-color: #007bff; }
+        .map-zoom-controls { display: flex; gap: 5px; margin: 0; }
+        .map-zoom-controls button { padding: 6px 15px; font-size: 14px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; font-weight: bold; transition: background 0.2s; }
+        .map-zoom-controls button:hover { background: #0056b3; }
+        
+        #map-scroll-container { flex: 1; overflow: hidden; background: #ffffff; border-radius: 8px; position: relative; cursor: grab; touch-action: none; user-select: none; margin: 0 20px 20px 20px; }
+        #map-scroll-container:active { cursor: grabbing; }
+        #map-view-container { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+        
+        #map-rotate-wrapper { position: relative; transform-origin: center center; display: inline-block; }
+        
+        #main-map-img { display: block; pointer-events: none; }
+        
+        .map-tab-dot { position: absolute; width: 24px; height: 24px; background: rgba(0, 123, 255, 0.9); border: 2px solid #fff; border-radius: 50%; cursor: pointer; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; color: white; font-size: 11px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .dot-delete { position: absolute; top: -8px; right: -8px; width: 16px; height: 16px; background: #f44336; color: white; border-radius: 50%; font-size: 12px; line-height: 14px; text-align: center; cursor: pointer; display: none; border: 1px solid white; box-sizing: border-box; }
+        .map-tab-dot:hover .dot-delete { display: block; }
+        
+        .map-editor-panel { position: absolute; top: 80px; left: 20px; background: rgba(0,0,0,0.85); padding: 15px; border-radius: 8px; z-index: 10; color: white; width: 250px; }
+        .settings-row { display: flex; gap: 10px; align-items: center; background: #2a2a2a; padding: 15px; border-radius: 8px; margin-top: 20px; }
+        .settings-row label { color: #aaa; font-size: 14px; white-space: nowrap; }
+        .settings-row select { margin: 0; }
+
+        @media (max-width: 768px) {
+            .hide-mobile { display: none !important; }
+            .map-header { flex-direction: column; justify-content: center; padding: 0 40px 10px 40px; gap: 10px; }
+            .map-header h2 { font-size: 18px; text-align: center; margin-top: 5px; }
+            .modal-fullscreen .close-modal { top: 5px; right: 15px; font-size: 32px; }
+            .map-editor-panel { top: 110px; }
+            .map-zoom-controls button[onclick="rotateMap()"] { padding: 8px 20px; font-size: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="panorama"></div>
+    <div class="crosshair" id="crosshair"></div>
+    <button id="floating-toggle-btn" onclick="toggleEditorPanel()">⚙️</button>
+
+    <div id="sidebar">
+        <div class="logo-container"><img id="site-logo" alt="Logo" style="display:none;"></div>
+        <div id="room-list"></div>
+        <div class="bottom-controls">
+            <button class="ctrl-btn" onclick="openModal('modal-info')" title="Информация">i</button>
+            <button class="ctrl-btn" onclick="openModal('modal-scenes')" title="Все сцены"><div class="grid-icon"><span></span><span></span><span></span><span></span></div></button>
+            <button class="ctrl-btn" onclick="openModal('modal-map')" title="Планировка"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg></button>
+        </div>
+    </div>
+
+    <div id="editor-panel">
+        <button class="btn-warning" onclick="toggleEditorPanel()">👁 Скрыть панель</button>
+        <h2 id="scene-title">Загрузка...</h2>
+        <div class="editor-section">
+            <h3>Добавить переход</h3>
+            <select id="target-scene-select"></select>
+            <button class="btn-success" onclick="addArrow()">📍 Поставить стрелку</button>
+        </div>
+        <div class="editor-section">
+            <h3>Стрелки на сцене</h3>
+            <div id="arrows-list"></div>
+        </div>
+        <div class="editor-section">
+            <h3>Проверка переходов</h3>
+            <button class="btn-primary" onclick="validateAndShow()">🔍 Проверить все переходы</button>
+            <div id="validation-result" style="font-size: 12px; margin-top: 10px;"></div>
+        </div>
+        <div class="editor-section">
+            <h3>Данные</h3>
+            <button class="btn-primary" onclick="openScenesSettings()">⚙️ Настройки сцен</button>
+            <button class="btn-success" onclick="saveToServer('links', linksData)">💾 Сохранить links.json</button>
+            <button class="btn-warning" onclick="saveToServer('map_points', mapPoints)">💾 Сохранить map_points.json</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-info">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal()">&times;</button>
+            <div id="project-info-content">
+                <p style="color:#aaa;">Загрузка...</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal-overlay" id="modal-scenes"><div class="modal-content"><button class="close-modal" onclick="closeModal()">&times;</button><h2>Комнаты</h2><div class="scene-grid" id="scene-grid-container"></div></div></div>
+
+    <div class="modal-overlay" id="modal-map">
+        <div class="modal-content modal-fullscreen">
+            <button class="close-modal" onclick="closeModal()">&times;</button>
+            <div class="map-header">
+                <h2>Планировка</h2>
+                <div class="map-tabs" id="map-tabs-container"></div>
+                <div class="map-zoom-controls">
+                    <button onclick="rotateMap()" title="Повернуть на 90°">↻</button>
+                    <button class="hide-mobile" onclick="zoomMap(1.25)">+</button>
+                    <button class="hide-mobile" onclick="zoomMap(0.8)">-</button>
+                    <button class="hide-mobile" onclick="resetMapZoom()">Сброс</button>
+                </div>
+            </div>
+            <div class="map-editor-panel">
+                <h3 style="margin-top:0; color:#4CAF50;">Точки</h3>
+                <select id="map-scene-select" style="margin-bottom:10px;"></select>
+                <p style="font-size:12px; color:#aaa;">Кликните на план, чтобы поставить точку.</p>
+            </div>
+            <div id="map-scroll-container">
+                <div id="map-view-container">
+                    <div id="map-rotate-wrapper">
+                        <img id="main-map-img" src="" alt="План">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-settings">
+        <div class="modal-content" style="max-width: 800px;">
+            <button class="close-modal" onclick="closeModal()">&times;</button>
+            <h2>Настройки</h2>
+            <div id="settings-floors-content"></div>
+            <button class="btn-primary btn-small" onclick="addFloor()">➕ Этаж</button>
+            <h3 style="margin-top: 20px;">Сцены:</h3>
+            <div id="settings-scenes"></div>
+            <div class="settings-row">
+                <label>Эффект перехода:</label>
+                <select id="transition-effect-select">
+                    <option value="smart_fade">Умное затемнение (с разворотом)</option>
+                    <option value="fade">Стандартное затемнение (без разворота)</option>
+                </select>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; margin-top:20px;"><label>Стартовая сцена:</label><select id="start-scene-select"></select></div>
+            <button class="btn-success" style="margin-top:20px; width: 100%;" onclick="saveProjectSettings()">💾 Сохранить</button>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const project = urlParams.get('project');
+        const projectBase = `../projects/${project}`;
+        let tourData, projectData, draftData;
+        let allScenes = [], sceneNames = {}, linksData = {}, mapPoints = {};
+        let viewer = null, currentSceneId = "", currentFloor = 1;
+        let selectedArrowIdx = null, editingIndex = null;
+
+        let mapScale = 1, mapTranslateX = 0, mapTranslateY = 0;
+        let minMapScale = 1;
+        let currentRotation = 0;
+        let isDraggingMap = false, mapStartX = 0, mapStartY = 0;
+        let isMouseDown = false, mapDragged = false;
+        let touchStartDist = 0, touchStartScale = 1, touchCenterX = 0, touchCenterY = 0;
+
+        Promise.all([
+            fetch(`${projectBase}/output/tour.json?t=${Date.now()}`).then(r => r.json()),
+            fetch(`${projectBase}/config/project.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null).catch(() => null),
+            fetch(`${projectBase}/config/links.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null).catch(() => null),
+            fetch(`${projectBase}/config/map_points.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null).catch(() => null)
+        ]).then(([tourJson, projJson, linksJson, mapJson]) => {
+            tourData = tourJson; projectData = projJson;
+            linksData = linksJson || {}; mapPoints = mapJson || {};
+            allScenes = Object.keys(tourData.scenes).sort();
+            allScenes.forEach(id => {
+                sceneNames[id] = tourData.scenes[id].title || id;
+                if (!linksData[id]) linksData[id] = [];
+            });
+            buildLeftMenu(); buildSelects(); buildThumbnails(); initMapEditor();
+            
+            if (tourData.default && tourData.default.logo) {
+                const logoEl = document.getElementById('site-logo');
+                if (logoEl) {
+                    logoEl.src = `${projectBase}/output/${tourData.default.logo}`;
+                    logoEl.style.display = '';
+                }
+            }
+            
+            const lastScene = localStorage.getItem('editor_last_scene');
+            if (lastScene && allScenes.includes(lastScene)) {
+                loadScene(lastScene);
+            } else {
+                loadScene(allScenes[0]);
+            }
+        });
+
+        function buildLeftMenu() {
+            const roomList = document.getElementById('room-list'); roomList.innerHTML = '';
+            const floors = projectData.floors || [{id: 1, name: "1 этаж"}];
+            const sceneFloors = [...new Set(Object.values(tourData.scenes).map(s => s.floor || 1))].sort();
+            sceneFloors.forEach(floorId => {
+                let floorName = `${floorId} этаж`;
+                const fInfo = floors.find(f => f.id == floorId);
+                if (fInfo) floorName = fInfo.name;
+                const titleEl = document.createElement('div');
+                titleEl.className = 'menu-section-title'; titleEl.innerText = floorName; roomList.appendChild(titleEl);
+                allScenes.forEach(id => {
+                    if ((tourData.scenes[id].floor || 1) == floorId) {
+                        const div = document.createElement('div');
+                        div.className = 'room-item'; div.dataset.scene = id; div.innerText = tourData.scenes[id].title;
+                        div.addEventListener('click', () => loadScene(id));
+                        roomList.appendChild(div);
+                    }
+                });
+            });
+        }
+
+        function loadScene(sceneId) {
+            currentSceneId = sceneId;
+            localStorage.setItem('editor_last_scene', sceneId);
+            document.getElementById('scene-title').innerText = sceneNames[sceneId];
+            document.querySelectorAll('.room-item').forEach(el => el.classList.toggle('active', el.dataset.scene === sceneId));
+            if (viewer) viewer.destroy();
+            
+            let config = { "default": { "firstScene": sceneId, "autoLoad": true, "sceneFadeDuration": 0 }, "scenes": {} };
+            
+            const isSmart = projectData && projectData.transition === 'fade' ? false : true;
+            
+            allScenes.forEach(id => {
+                let multi = {};
+                if (tourData.scenes[id].multiRes) {
+                    multi = JSON.parse(JSON.stringify(tourData.scenes[id].multiRes));
+                    multi.basePath = `${projectBase}/output/${multi.basePath}`;
+                }
+                let sceneConfig = { "type": "multires", "multiRes": multi, "autoLoad": true, "hotSpots": [] };
+                
+                if (linksData[id]) {
+                    linksData[id].forEach((link) => {
+                        let hs = { 
+                            "pitch": link.pitch, "yaw": link.yaw, "type": "scene", "sceneId": link.target, "text": "→ " + sceneNames[link.target]
+                        };
+
+                        if (isSmart) {
+                            const targetId = link.target;
+                            if (linksData[targetId]) {
+                                const backDoor = linksData[targetId].find(b => b.target === id && typeof b.yaw === 'number');
+                                if (backDoor) {
+                                    let targetYaw = backDoor.yaw + 180;
+                                    targetYaw = ((targetYaw + 180) % 360 + 360) % 360 - 180;
+                                    hs.targetYaw = targetYaw;
+                                    hs.targetPitch = 0;
+                                }
+                            }
+                        }
+                        sceneConfig.hotSpots.push(hs);
+                    });
+                }
+                config.scenes[id] = sceneConfig;
+            });
+            
+            viewer = pannellum.viewer('panorama', config);
+            
+            viewer.on('scenechange', function(newSceneId) {
+                currentSceneId = newSceneId;
+                localStorage.setItem('editor_last_scene', newSceneId);
+                document.getElementById('scene-title').innerText = sceneNames[newSceneId];
+                document.querySelectorAll('.room-item').forEach(el => el.classList.toggle('active', el.dataset.scene === newSceneId));
+                renderArrowsList();
+            });
+            
+            renderArrowsList();
+        }
+
+        function findMissingBackArrows() {
+            const problems = [];
+            allScenes.forEach(from => {
+                (linksData[from] || []).forEach(link => {
+                    const to = link.target;
+                    const hasBack = (linksData[to] || []).some(l => l.target === from);
+                    if (!hasBack) problems.push({ from, to });
+                });
+            });
+            return problems;
+        }
+
+        function updateValidationBadge() {
+            const problems = findMissingBackArrows();
+            const btn = document.querySelector('button[onclick="validateAndShow()"]');
+            if (!btn) return;
+            if (problems.length > 0) {
+                btn.innerText = `🔍 Проверить все переходы (${problems.length})`;
+                btn.style.background = '#ff9800';
+                btn.style.color = '#000';
+            } else {
+                btn.innerText = '🔍 Проверить все переходы';
+                btn.style.background = '#007bff';
+                btn.style.color = '#fff';
+            }
+        }
+
+        function validateAndShow() {
+            const problems = findMissingBackArrows();
+            const div = document.getElementById('validation-result');
+            if (problems.length === 0) {
+                div.innerHTML = '<span style="color:#4CAF50;">✅ Все переходы двусторонние</span>';
+                return;
+            }
+            const html = problems.map(p =>
+                `<div style="color:#ff9800; padding:6px 0; border-bottom:1px solid #333;">
+                    ⚠️ ${sceneNames[p.from]} → ${sceneNames[p.to]}<br>
+                    <span style="color:#888; font-size:11px;">нет обратной стрелки в «${sceneNames[p.to]}»</span>
+                </div>`
+            ).join('');
+            div.innerHTML = `<div style="color:#f44336; margin-bottom:6px; font-weight:bold;">Найдено проблем: ${problems.length}</div>${html}`;
+        }
+
+        function renderArrowsList() {
+            const list = document.getElementById('arrows-list'); 
+            list.innerHTML = '';
+            
+            if (!linksData[currentSceneId] || linksData[currentSceneId].length === 0) {
+                list.innerHTML = '<p style="color:#777; font-size:12px;">Нет стрелок</p>';
+                updateValidationBadge();
+                return;
+            }
+            
+            linksData[currentSceneId].forEach((link, idx) => {
+                if (editingIndex === idx) {
+                    let opts = allScenes.map(id => `<option value="${id}" ${id === link.target ? 'selected' : ''}>${sceneNames[id]}</option>`).join('');
+                    list.innerHTML += `<div class="arrow-item"><div style="width:100%;"><select id="edit-select-${idx}" style="margin-bottom:5px;">${opts}</select><div style="display:flex; gap:5px;"><button class="btn-success btn-small" onclick="saveEdit(${idx})">✔</button><button class="btn-danger btn-small" onclick="cancelEdit()">✖</button></div></div></div>`;
+                } else {
+                    list.innerHTML += `<div class="arrow-item"><span>➔ ${sceneNames[link.target]}</span><div style="display:flex; gap:5px;"><button class="btn-primary btn-small" onclick="startEdit(${idx})">✏️</button><button class="btn-danger btn-small" onclick="removeArrow(${idx})">X</button></div></div>`;
+                }
+            });
+            
+            updateValidationBadge();
+        }
+
+        function addArrow() {
+            const targetId = document.getElementById('target-scene-select').value;
+            const currentPitch = Math.round(viewer.getPitch() * 10) / 10;
+            const currentYaw = Math.round(viewer.getYaw() * 10) / 10;
+            
+            if (isNaN(currentPitch) || isNaN(currentYaw)) {
+                alert("Панорама еще не загрузилась! Подождите секунду и попробуйте снова.");
+                return;
+            }
+            
+            if (!linksData[currentSceneId]) linksData[currentSceneId] = [];
+            linksData[currentSceneId].push({ target: targetId, yaw: currentYaw, pitch: currentPitch });
+            document.getElementById('target-scene-select').selectedIndex = 0;
+            
+            loadScene(currentSceneId);
+        }
+        
+        function removeArrow(idx) { 
+            linksData[currentSceneId].splice(idx, 1); 
+            selectedArrowIdx = null; 
+            loadScene(currentSceneId); 
+        }
+        
+        function startEdit(idx) { editingIndex = idx; renderArrowsList(); }
+        function cancelEdit() { editingIndex = null; renderArrowsList(); }
+        function saveEdit(idx) { 
+            linksData[currentSceneId][idx].target = document.getElementById(`edit-select-${idx}`).value; 
+            editingIndex = null; 
+            loadScene(currentSceneId); 
+        }
+
+        function buildSelects() {
+            const tSelect = document.getElementById('target-scene-select');
+            const mSelect = document.getElementById('map-scene-select');
+            allScenes.forEach(id => {
+                tSelect.innerHTML += `<option value="${id}">${sceneNames[id]}</option>`;
+                mSelect.innerHTML += `<option value="${id}">${sceneNames[id]}</option>`;
+            });
+        }
+
+        function buildThumbnails() {
+            const grid = document.getElementById('scene-grid-container');
+            allScenes.forEach(id => {
+                grid.innerHTML += `<div class="scene-card" onclick="loadScene('${id}'); closeModal();"><img src="${projectBase}/output/thumbnails/${id}.jpg"><div class="scene-card-title">${sceneNames[id]}</div></div>`;
+            });
+        }
+
+        function initMapEditor() {
+            const tabs = document.getElementById('map-tabs-container');
+            const allFloors = tourData.floors || projectData.floors || [{id: 1, name: "1 этаж", plan: "plan1.png"}];
+            const floorsWithPlan = allFloors.filter(f => f.plan && f.plan.trim() !== '');
+            tabs.innerHTML = '';
+            if (floorsWithPlan.length > 1) {
+                floorsWithPlan.forEach(f => { 
+                    tabs.innerHTML += `<button class="tab-btn ${f.id === floorsWithPlan[0].id ? 'active' : ''}" id="m-tab-${f.id}" onclick="switchFloor(${f.id})">${f.name}</button>`; 
+                });
+            } else { 
+                tabs.style.display = 'none'; 
+            }
+            if (floorsWithPlan.length > 0) {
+                switchFloor(floorsWithPlan[0].id);
+            }
+
+            const mapContainer = document.getElementById('map-scroll-container');
+
+            mapContainer.addEventListener('click', function(e) {
+                if (mapDragged) return;
+                if (e.target.classList.contains('map-tab-dot') || e.target.classList.contains('dot-delete')) return;
+                if (!document.getElementById('modal-map').classList.contains('active')) return;
+                
+                const img = document.getElementById('main-map-img');
+                const rect = img.getBoundingClientRect(); 
+                
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                
+                let dx = e.clientX - cx;
+                let dy = e.clientY - cy;
+
+                const rad = -currentRotation * Math.PI / 180;
+                const unrotDx = dx * Math.cos(rad) - dy * Math.sin(rad);
+                const unrotDy = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+                const visualW = img.naturalWidth * mapScale;
+                const visualH = img.naturalHeight * mapScale;
+
+                const x = ((unrotDx / visualW) + 0.5) * 100;
+                const y = ((unrotDy / visualH) + 0.5) * 100;
+                
+                if (x < 0 || x > 100 || y < 0 || y > 100) return;
+
+                const sceneId = document.getElementById('map-scene-select').value;
+                if (!mapPoints[currentFloor]) mapPoints[currentFloor] = [];
+                const existingIdx = mapPoints[currentFloor].findIndex(p => p.sceneId === sceneId);
+                
+                if (existingIdx !== -1) { 
+                    mapPoints[currentFloor][existingIdx].x = x; 
+                    mapPoints[currentFloor][existingIdx].y = y; 
+                } else { 
+                    mapPoints[currentFloor].push({ sceneId, x, y }); 
+                }
+                renderMapPoints();
+            });
+
+            mapContainer.addEventListener('wheel', function(e) {
+                if (!document.getElementById('modal-map').classList.contains('active')) return;
+                e.preventDefault();
+                
+                const rect = mapContainer.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+                const newScale = Math.max(minMapScale, Math.min(10, mapScale * zoomFactor));
+                
+                mapTranslateX = mouseX - (mouseX - mapTranslateX) * (newScale / mapScale);
+                mapTranslateY = mouseY - (mouseY - mapTranslateY) * (newScale / mapScale);
+                mapScale = newScale;
+                
+                updateMapTransform();
+            }, { passive: false });
+
+            mapContainer.addEventListener('mousedown', (e) => {
+                if (e.button !== 0 || e.target.classList.contains('map-tab-dot')) return;
+                isMouseDown = true;
+                mapDragged = false;
+                mapStartX = e.clientX - mapTranslateX;
+                mapStartY = e.clientY - mapTranslateY;
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isMouseDown) return;
+                if (Math.abs(e.clientX - (mapStartX + mapTranslateX)) > 3 || Math.abs(e.clientY - (mapStartY + mapTranslateY)) > 3) {
+                    mapDragged = true;
+                }
+                mapTranslateX = e.clientX - mapStartX;
+                mapTranslateY = e.clientY - mapStartY;
+                updateMapTransform();
+            });
+
+            window.addEventListener('mouseup', () => {
+                isMouseDown = false;
+            });
+
+            mapContainer.addEventListener('touchstart', (e) => {
+                if (e.target.classList.contains('map-tab-dot')) return;
+                mapDragged = false;
+                
+                if (e.touches.length === 1) {
+                    isMouseDown = true;
+                    mapStartX = e.touches[0].clientX - mapTranslateX;
+                    mapStartY = e.touches[0].clientY - mapTranslateY;
+                } else if (e.touches.length === 2) {
+                    isMouseDown = false;
+                    const t1 = e.touches[0], t2 = e.touches[1];
+                    touchStartDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+                    touchStartScale = mapScale;
+                    
+                    const rect = mapContainer.getBoundingClientRect();
+                    touchCenterX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                    touchCenterY = (t1.clientY + t2.clientY) / 2 - rect.top;
+                }
+            }, { passive: false });
+
+            mapContainer.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 1 && isMouseDown) {
+                    e.preventDefault();
+                    if (Math.abs(e.touches[0].clientX - (mapStartX + mapTranslateX)) > 3 || Math.abs(e.touches[0].clientY - (mapStartY + mapTranslateY)) > 3) {
+                        mapDragged = true;
+                    }
+                    mapTranslateX = e.touches[0].clientX - mapStartX;
+                    mapTranslateY = e.touches[0].clientY - mapStartY;
+                    updateMapTransform();
+                } else if (e.touches.length === 2) {
+                    e.preventDefault();
+                    mapDragged = true;
+                    const t1 = e.touches[0], t2 = e.touches[1];
+                    const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+                    const newScale = Math.max(minMapScale, Math.min(10, touchStartScale * (dist / touchStartDist)));
+                    
+                    mapTranslateX = touchCenterX - (touchCenterX - mapTranslateX) * (newScale / mapScale);
+                    mapTranslateY = touchCenterY - (touchCenterY - mapTranslateY) * (newScale / mapScale);
+                    mapScale = newScale;
+                    
+                    updateMapTransform();
+                }
+            }, { passive: false });
+
+            mapContainer.addEventListener('touchend', () => {
+                isMouseDown = false;
+            });
+        }
+
+        function switchFloor(floorId) {
+            currentFloor = floorId;
+            const allFloors = tourData.floors || projectData.floors || [];
+            allFloors.forEach(f => document.getElementById(`m-tab-${f.id}`)?.classList.toggle('active', f.id === floorId));
+            
+            const floorInfo = allFloors.find(f => f.id === floorId);
+            
+            currentRotation = floorInfo && floorInfo.rotation !== undefined ? parseInt(floorInfo.rotation) : 0;
+
+            if (floorInfo && floorInfo.plan) {
+                const img = document.getElementById('main-map-img');
+                img.src = `${projectBase}/output/${floorInfo.plan}`;
+                img.onload = () => { resetMapView(); };
+            }
+            renderMapPoints();
+        }
+
+        function renderMapPoints() {
+            document.querySelectorAll('.map-tab-dot').forEach(el => el.remove());
+            if (mapPoints[currentFloor]) {
+                const container = document.getElementById('map-rotate-wrapper'); 
+                mapPoints[currentFloor].forEach((p, i) => {
+                    const dot = document.createElement('div');
+                    dot.className = 'map-tab-dot'; 
+                    dot.style.left = p.x + '%'; 
+                    dot.style.top = p.y + '%';
+                    dot.innerHTML = `${i + 1}<div class="dot-delete" onclick="deleteMapPoint(event, ${i})">×</div>`;
+                    dot.onclick = (e) => { e.stopPropagation(); loadScene(p.sceneId); closeModal(); };
+                    container.appendChild(dot);
+                });
+            }
+        }
+
+        function deleteMapPoint(event, index) { 
+            event.stopPropagation(); 
+            mapPoints[currentFloor].splice(index, 1); 
+            renderMapPoints(); 
+        }
+
+        function rotateMap() {
+            currentRotation = (currentRotation + 90) % 360;
+            resetMapView();
+        }
+
+        function resetMapView() {
+            const container = document.getElementById('map-scroll-container');
+            const img = document.getElementById('main-map-img');
+            if (!container || !img) return;
+
+            let iw = img.naturalWidth;
+            let ih = img.naturalHeight;
+            
+            if (!iw || !ih) {
+                iw = img.width || 1000;
+                ih = img.height || 1000;
+            }
+
+            let displayW = iw;
+            let displayH = ih;
+            if (currentRotation % 180 !== 0) {
+                displayW = ih;
+                displayH = iw;
+            }
+
+            const cw = container.clientWidth;
+            const ch = container.clientHeight;
+
+            minMapScale = Math.min(cw / displayW, ch / displayH, 1);
+            mapScale = minMapScale;
+            
+            mapTranslateX = (cw - displayW * mapScale) / 2;
+            mapTranslateY = (ch - displayH * mapScale) / 2;
+
+            updateMapTransform();
+        }
+
+        function updateMapTransform() {
+            const view = document.getElementById('map-view-container');
+            const rotator = document.getElementById('map-rotate-wrapper');
+            if (view) {
+                view.style.transform = `translate(${mapTranslateX}px, ${mapTranslateY}px) scale(${mapScale})`;
+            }
+            if (rotator) {
+                rotator.style.transform = `rotate(${currentRotation}deg)`;
+            }
+        }
+
+        function resetMapZoom() { 
+            resetMapView(); 
+        }
+
+        function zoomMap(factor) {
+            const container = document.getElementById('map-scroll-container');
+            const cx = container.clientWidth / 2;
+            const cy = container.clientHeight / 2;
+            
+            const newScale = Math.max(minMapScale, Math.min(10, mapScale * factor));
+            mapTranslateX = cx - (cx - mapTranslateX) * (newScale / mapScale);
+            mapTranslateY = cy - (cy - mapTranslateY) * (newScale / mapScale);
+            mapScale = newScale;
+            
+            updateMapTransform();
+        }
+
+        function openModal(id) { 
+            document.getElementById(id).classList.add('active'); 
+            if (id === 'modal-info') {
+                const container = document.getElementById('project-info-content');
+                if (!container.dataset.loaded) {
+                    fetch(`${projectBase}/output/info.html?t=${Date.now()}`)
+                        .then(res => res.ok ? res.arrayBuffer() : Promise.reject('Not found'))
+                        .then(buffer => {
+                            const html = new TextDecoder('utf-8').decode(buffer);
+                            container.innerHTML = html;
+                            container.dataset.loaded = 'true';
+                        })
+                        .catch(() => container.innerHTML = '<h2>О проекте</h2><p>Информация не найдена.</p>');
+                }
+            }
+            if (id === 'modal-map') {
+                const floorsWithPlan = (tourData.floors || projectData.floors || []).filter(f => f.plan && f.plan.trim() !== '');
+                if (floorsWithPlan.length > 0) {
+                    setTimeout(() => { switchFloor(floorsWithPlan[0].id); }, 50);
+                }
+            }
+            if (id === 'modal-settings') {
+                const transVal = projectData.transition === 'fade' ? 'fade' : 'smart_fade';
+                document.getElementById('transition-effect-select').value = transVal;
+            }
+        }
+        function closeModal() { document.querySelectorAll('.modal-overlay').forEach(el => el.classList.remove('active')); }
+        function toggleEditorPanel() { const p = document.getElementById('editor-panel'); const b = document.getElementById('floating-toggle-btn'); p.classList.toggle('hidden'); b.innerText = p.classList.contains('hidden') ? '⚙️' : '✖'; }
+
+        function saveToServer(fileType, data, onSuccess) {
+            localStorage.setItem('editor_last_scene', currentSceneId);
+            fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project, file_type: fileType, content: data }) })
+            .then(res => res.ok ? res.json() : Promise.reject("Ошибка сервера"))
+            .then(res => { alert('✅ ' + res.message); setTimeout(() => location.reload(), 500); })
+            .catch(err => alert('❌ ' + err));
+        }
+
+        function openScenesSettings() { draftData = JSON.parse(JSON.stringify(projectData)); renderSettings(); openModal('modal-settings'); }
+        function renderSettings() {
+            const fDiv = document.getElementById('settings-floors-content');
+            fDiv.innerHTML = draftData.floors.map(f => `
+                <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center;">
+                    <input type="text" value="${f.name}" id="fname-${f.id}" style="flex:1;">
+                    <input type="text" value="${f.plan || ''}" id="fplan-${f.id}" placeholder="plan1.png" style="flex:1;">
+                    <select id="frot-${f.id}" style="width:140px;">
+                        <option value="0" ${f.rotation === 0 || !f.rotation ? 'selected' : ''}>Горизонт (0°)</option>
+                        <option value="90" ${f.rotation === 90 ? 'selected' : ''}>Вертикаль (+90°)</option>
+                        <option value="270" ${f.rotation === 270 ? 'selected' : ''}>Вертикаль (-90°)</option>
+                    </select>
+                </div>
+            `).join('');
+            const sDiv = document.getElementById('settings-scenes');
+            sDiv.innerHTML = draftData.scenes.map(s => `<div style="display:flex; gap:10px; margin-bottom:10px;"><input type="text" value="${s.name}" id="sname-${s.id}"><select id="sfloor-${s.id}">${draftData.floors.map(f => `<option value="${f.id}" ${s.floor == f.id ? 'selected' : ''}>${f.name}</option>`).join('')}</select></div>`).join('');
+            document.getElementById('start-scene-select').innerHTML = draftData.scenes.map(s => `<option value="${s.id}" ${draftData.start_scene == s.id ? 'selected' : ''}>${s.name}</option>`).join('');
+        }
+        function addFloor() { const maxId = draftData.floors.reduce((max, f) => Math.max(max, f.id), 0); draftData.floors.push({ id: maxId + 1, name: `${maxId + 1} этаж`, plan: '', rotation: 0 }); renderSettings(); }
+        function saveProjectSettings() {
+            draftData.floors.forEach(f => { 
+                f.name = document.getElementById(`fname-${f.id}`).value; 
+                f.plan = document.getElementById(`fplan-${f.id}`).value; 
+                f.rotation = parseInt(document.getElementById(`frot-${f.id}`).value);
+            });
+            draftData.scenes.forEach(s => { s.name = document.getElementById(`sname-${s.id}`).value; s.floor = parseInt(document.getElementById(`sfloor-${s.id}`).value); });
+            draftData.start_scene = document.getElementById('start-scene-select').value;
+            draftData.transition = document.getElementById('transition-effect-select').value;
+            saveToServer('project', draftData);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Редактор планировки</title>
+    <style>
+        body { margin: 0; display: flex; height: 100vh; font-family: sans-serif; background: #222; color: white; overflow: hidden; }
+        #map-area { width: 70%; position: relative; background: #000; display: flex; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; }
+        #map-container { position: relative; max-width: 100%; max-height: 100%; cursor: crosshair; }
+        #map-container img { display: block; max-width: 100%; max-height: 85vh; background: #fff; }
+        .map-dot { position: absolute; width: 24px; height: 24px; background: rgba(0,123,255,0.8); border: 3px solid #fff; border-radius: 50%; cursor: pointer; transform: translate(-50%,-50%); box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; justify-content: center; align-items: center; color: white; font-size: 10px; font-weight: bold; }
+        #sidebar { width: 30%; background: #111; padding: 20px; box-sizing: border-box; overflow-y: auto; border-left: 1px solid #333; display: flex; flex-direction: column; }
+        h2 { margin-top: 0; font-size: 20px; color: #4CAF50; }
+        h3 { font-size: 14px; color: #aaa; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 15px; }
+        .tab-btn { flex: 1; padding: 10px; cursor: pointer; background: #333; border: 1px solid #555; color: white; border-radius: 5px; font-weight: bold; }
+        .tab-btn.active { background: #007bff; border-color: #007bff; }
+        select { width: 100%; padding: 10px; margin-bottom: 10px; background: #333; color: white; border: 1px solid #555; border-radius: 5px; }
+        button { width: 100%; padding: 12px; margin-bottom: 10px; cursor: pointer; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; }
+        .btn-success { background: #4CAF50; color: white; }
+        .btn-danger { background: #f44336; color: white; padding: 4px 8px; font-size: 12px; width: auto; margin: 0; }
+        .dot-list-item { background: #2a2a2a; padding: 8px 10px; margin-bottom: 5px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div id="map-area">
+        <div id="map-container" onclick="handleMapClick(event)">
+            <img id="map-image" src="" alt="Планировка">
+        </div>
+    </div>
+    <div id="sidebar">
+        <h2>Редактор планировки</h2>
+        <p id="project-status" style="font-size:12px; color:#3498db;">Загрузка...</p>
+        <div class="tabs" id="floor-tabs"></div>
+        <p style="font-size:12px; color:#aaa;">Выберите сцену, затем кликните на плане в нужном месте.</p>
+        <select id="scene-select"></select>
+        <h3>Точки на этом этаже:</h3>
+        <div id="dots-list"></div>
+        <button class="btn-success" style="margin-top: auto;" onclick="exportJSON()">💾 Скачать map_points.json</button>
+    </div>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const project = urlParams.get('project');
+        if (!project) {
+            document.getElementById('project-status').innerHTML = '❌ Не указан ?project=';
+            document.getElementById('project-status').style.color = '#f44336';
+        }
+        const projectBase = `../projects/${project}`;
+        let currentFloor = 1;
+        let floors = [];
+        let sceneTitles = {};
+        let pointsData = {};
+
+        Promise.all([
+            fetch(`${projectBase}/output/tour.json`).then(r => r.json()),
+            fetch(`${projectBase}/config/project.json`).then(r => r.ok ? r.json() : {floors: [{id: 1, name: "1 этаж", plan: "plan1.png"}]}),
+            fetch(`${projectBase}/config/map_points.json`).then(r => r.ok ? r.json() : null).catch(() => null)
+        ]).then(([tourData, projectData, savedPoints]) => {
+            Object.keys(tourData.scenes).forEach(id => sceneTitles[id] = tourData.scenes[id].title || id);
+            floors = projectData.floors || [{id: 1, name: "1 этаж", plan: "plan1.png"}];
+            if (savedPoints) pointsData = savedPoints;
+            floors.forEach(f => { if (!pointsData[f.id]) pointsData[f.id] = []; });
+            
+            document.getElementById('project-status').innerHTML = `✅ Проект: <b>${project}</b>`;
+            document.getElementById('project-status').style.color = '#4CAF50';
+
+            const tabs = document.getElementById('floor-tabs');
+            floors.forEach(f => {
+                tabs.innerHTML += `<button class="tab-btn ${f.id === 1 ? 'active' : ''}" id="tab-${f.id}" onclick="switchFloor(${f.id})">${f.name}</button>`;
+            });
+
+            const select = document.getElementById('scene-select');
+            Object.entries(sceneTitles).forEach(([id, name]) => {
+                select.innerHTML += `<option value="${id}">${name} (${id})</option>`;
+            });
+
+            switchFloor(1);
+        }).catch(err => {
+            document.getElementById('project-status').innerHTML = `❌ Ошибка: ${err}`;
+            document.getElementById('project-status').style.color = '#f44336';
+        });
+
+        function switchFloor(floorId) {
+            currentFloor = floorId;
+            floors.forEach(f => document.getElementById(`tab-${f.id}`)?.classList.toggle('active', f.id === floorId));
+            const floorInfo = floors.find(f => f.id === floorId);
+            if (floorInfo) {
+                document.getElementById('map-image').src = `${projectBase}/output/${floorInfo.plan}`;
+            }
+            document.querySelectorAll('.map-dot').forEach(el => el.remove());
+            renderDots();
+            renderList();
+        }
+
+        function handleMapClick(e) {
+            if (e.target.classList.contains('map-dot')) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = ((e.clientX - rect.left) / rect.width) * 100;
+            const y = ((e.clientY - rect.top) / rect.height) * 100;
+            const sceneId = document.getElementById('scene-select').value;
+            if (pointsData[currentFloor].some(p => p.sceneId === sceneId)) {
+                alert("Эта сцена уже добавлена!"); return;
+            }
+            pointsData[currentFloor].push({ sceneId, x, y });
+            renderDots(); renderList();
+        }
+
+        function renderDots() {
+            const container = document.getElementById('map-container');
+            pointsData[currentFloor].forEach((p, i) => {
+                const dot = document.createElement('div');
+                dot.className = 'map-dot';
+                dot.style.left = p.x + '%'; dot.style.top = p.y + '%';
+                dot.innerText = i + 1;
+                dot.title = sceneTitles[p.sceneId] || p.sceneId;
+                container.appendChild(dot);
+            });
+        }
+
+        function renderList() {
+            const list = document.getElementById('dots-list');
+            list.innerHTML = '';
+            if (pointsData[currentFloor].length === 0) { list.innerHTML = '<p style="font-size:12px;color:#777;">Нет точек</p>'; return; }
+            pointsData[currentFloor].forEach((p, i) => {
+                list.innerHTML += `<div class="dot-list-item"><span>${i+1}. ${sceneTitles[p.sceneId]}</span><button class="btn-danger" onclick="removeDot(${i})">X</button></div>`;
+            });
+        }
+
+        function removeDot(idx) {
+            pointsData[currentFloor].splice(idx, 1);
+            document.querySelectorAll('.map-dot').forEach(el => el.remove());
+            renderDots(); renderList();
+        }
+
+        function exportJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(pointsData, null, 2));
+            const a = document.createElement('a'); a.href = dataStr; a.download = "map_points.json"; document.body.appendChild(a); a.click(); a.remove();
+            alert("map_points.json скачан! Положите его в: projects/" + project + "/config/");
+        }
+    </script>
+</body>
+</html>
