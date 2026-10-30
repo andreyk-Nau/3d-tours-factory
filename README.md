@@ -68,3 +68,9 @@ http://localhost:8000/editors/editor.html?project=my_tour
 В docker-compose.yml уже настроен автоматический запуск core/server.py. Он работает в фоне и пересобирает тур при каждом нажатии кнопки «Сохранить» в редакторе.
 Если вы внесли изменения в код server.py, перезапустите его:
 docker compose restart tour-app
+
+## 📄 Лицензии третьих сторон
+
+Этот проект использует следующие open-source компоненты:
+
+*   **Pannellum** — распространяется под лицензией MIT. Copyright (c) Matthew Petroff. Полный текст лицензии находится в файле `tools/pannellum/COPYING`.
