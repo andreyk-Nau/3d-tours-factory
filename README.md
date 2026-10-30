@@ -74,3 +74,7 @@ docker compose restart tour-app
 Этот проект использует следующие open-source компоненты:
 
 *   **Pannellum** — распространяется под лицензией MIT. Copyright (c) Matthew Petroff. Полный текст лицензии находится в файле `tools/pannellum/COPYING`.
+
+## 📬 Контакты
+- **Автор:** Андрей Койвистолайнен
+- **LinkedIn:** [Andrey Koivistolainen](https://www.linkedin.com/in/andreykoi/)
